@@ -93,8 +93,8 @@ public class Robot extends TimedRobot {
 
     // Camera
     camera = CameraServer.getInstance().startAutomaticCapture();
-   camera.setResolution(200, 150);
-   camera.setFPS(50);
+   camera.setResolution(300, 225);
+   camera.setFPS(30);
 
     // Elevator Winch
     elevatorWinch = new WPI_TalonSRX(5);
