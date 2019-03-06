@@ -126,7 +126,7 @@ public class Robot extends TimedRobot {
 
   @Override
   public void autonomousInit() {
-    // TODO: Can I just re-type teleOp code here?
+   
   }
 
   /**
@@ -134,7 +134,7 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void autonomousPeriodic() {
-
+  teleopPeriodic();
   }
 
   /**
