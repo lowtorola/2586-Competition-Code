@@ -18,8 +18,8 @@ public class IntakeConstants {
   static final double kD = 0.0;
 
   //Intake position set points (degrees)
-  static double[] SETPOINTS ={
-      0.0,//starting config
+  static int[] SETPOINTS ={
+      0,//starting config
       49,//intaking postition
       79//Scoring config: tucked against bumpers
   };
