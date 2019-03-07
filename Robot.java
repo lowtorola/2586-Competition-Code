@@ -50,7 +50,6 @@ public class Robot extends TimedRobot {
   WPI_TalonSRX frontLeft, rearLeft, frontRight, rearRight;
   DifferentialDrive mainDrive;
   double leftPower, rightPower;
-  int driveMode = 0; // For choosing drive mode: 0 is open field (regular), 1 is auton, 2 is scoring
 
   // Elevator elevatorWinch
   TalonSRX elevatorWinch;
@@ -85,6 +84,7 @@ public class Robot extends TimedRobot {
     leftJoyStick = new Joystick(0);
     rightJoyStick = new Joystick(1);
     operatorController = new XboxController(2);
+    
 
     // Motors
     // Drive
@@ -104,43 +104,41 @@ public class Robot extends TimedRobot {
 
     // Elevator winch
     elevatorWinch = new WPI_TalonSRX(5);
-    winchInit();
+    winchInit(); // Method to set up winch: set it in its own method for organization
 
     // Shooter
     shooter = new WPI_TalonSRX(6);
-    shooterLimit = new DigitalInput(2);
-    hasCargo = !shooterLimit.get();
+    shooterLimit = new DigitalInput(2); // Limit switch to prevent from ripping cargo
+    hasCargo = !shooterLimit.get(); // Boolean to use limit switch's input
 
     // Intake
     intakeGearbox = new WPI_TalonSRX(7);
     intakeWheels = new PWMVictorSPX(0);
-    intakeInit();
+    intakeInit(); // Method to set up intake gearbox: set it in its own method for organization
 
     // HAB Lift
-    elevatorWinchHAB = new Spark(2);
-    wheelsHAB = new PWMVictorSPX(1);
+    elevatorWinchHAB = new Spark(2); // Motor to drive HAB lift up and down
+    wheelsHAB = new PWMVictorSPX(1); // Motor to drive us forward once we get on the HAB
 
     // HP Mech
-    mechUpDown = new DoubleSolenoid(0, 1);
-    hatchGrabRelease = new DoubleSolenoid(2, 3);
-    
-
+    mechUpDown = new DoubleSolenoid(0, 1); // Solenoid to rotate the HP Mech up and down
+    hatchGrabRelease = new DoubleSolenoid(2, 3); // Solenoid to grab and release HP
 
   }
-  int counter = 0;
+  int counter = 0; // Integer to make it so that we print out to ShuffleBoard every 10 cycles
   @Override
   public void robotPeriodic() {
-    counter = (counter + 1) % 10; 
+    counter = (counter + 1) % 10; // Increase counter by 1, get the remainder to use later
     if(counter == 0) {
-    SmartDashboard.putBoolean("Has Hatch Panel", hasHatch);
-    SmartDashboard.putBoolean("Has Cargo", hasCargo);
+    SmartDashboard.putBoolean("Has Hatch Panel", hasHatch); // Print out that we have a HP
+    SmartDashboard.putBoolean("Has Cargo", hasCargo); // Print out that we have a Cargo
     if(hatchMechUp) {
-      SmartDashboard.putString("Hatch Mech Position", "Up");
+      SmartDashboard.putString("Hatch Mech Position", "Up"); // Print out that the HP mech is up
     } else {
-      SmartDashboard.putString("Hatch Mech Position", "Down");
+      SmartDashboard.putString("Hatch Mech Position", "Down"); // Print out that the HP mech is up
     }
-    SmartDashboard.putString("Target Position", ElevatorConstants.SETPOINT_NAMES[elevatorIndexValue]);
-    SmartDashboard.putString("Target Position", IntakeConstants.SETPOINT_NAMES[intakeIndexValue]);
+    SmartDashboard.putString("Target Position", ElevatorConstants.SETPOINT_NAMES[elevatorIndexValue]); // Print out the name of our elevator target point
+    SmartDashboard.putString("Target Position", IntakeConstants.SETPOINT_NAMES[intakeIndexValue]); // Print out the name of our intake target point
   }
 }
   
@@ -156,7 +154,7 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void autonomousPeriodic() {
-    teleopPeriodic();
+    teleopPeriodic(); // Utilize teleOp code here
   }
 
   /**
@@ -164,23 +162,23 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void teleopPeriodic() {
-    auxilaries();
+    auxilaries(); // Method for controlling mechs
     leftPower = deadzoneComp(leftJoyStick.getY()) * -1;
     rightPower = deadzoneComp(rightJoyStick.getY()) * -1; 
 
-    if(rightJoyStick.getRawButton(11)) {
-      visionLogic();
-      SmartDashboard.putString("Auton Drive", "Robot is in Control");
-    } else if(leftJoyStick.getRawButton(6)) {
+    if(rightJoyStick.getRawButton(11)) { // Vision drive
+      visionLogic(); // Vision processing
+      SmartDashboard.putString("Auton Drive", "Robot is in Control"); 
+    } else if(leftJoyStick.getRawButton(6)) { // Creep drive
       scoringDrive();
       SmartDashboard.putString("Scoring Drive", "Manual Scoring");
-    } else {
+    } else { // Normal tank drive
       mainDrive.tankDrive(leftPower, rightPower);
      SmartDashboard.putString("Open Field Drive", "Regular");
     }
   }
 
-  public void auxilaries(){ // Method containing all mechs- eventually elevator
+  public void auxilaries(){ // Method containing all mechs except for elevator and intake
 
     double shooterCommand = deadzoneComp(operatorController.getRawAxis(1)); // Left Stick on XBOX
 
@@ -214,20 +212,22 @@ public class Robot extends TimedRobot {
       hatchMechUp = false;
     }
 
-    // HAB elevatorWinch
+    // HAB elevatorWinch- controlled by right stick
     double HABelevatorWinchControl = deadzoneComp(operatorController.getRawAxis(5) * -1);
-    if(operatorController.getRawButton(10)) { // Have to press down stick AND push it up or down
+    if(operatorController.getRawButton(10)) { // Have to press down stick AND push it up or down to prevent accidental activation
       elevatorWinchHAB.set(HABelevatorWinchControl); // Moves HAB elevatorWinch up and down
     } else {
       elevatorWinchHAB.set(0);
     }
 
-    double HABdriveControl = deadzoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kLeft));
+    double HABdriveControl = deadzoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kLeft)); 
+    // Left trigger controls this
     // HAB Drive
     wheelsHAB.set(HABdriveControl);
   }
 
-  // Intake wheels
+  // Intake wheels- controlled by Right Trigger
+  // We won't ever need to outtake from the bar intake
   double intakeWheelsControl = deadzoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kRight));
 
   // Vision Aiming Code. I didn't program this, so I did my best to implement it. TODO: Debug as necessary
@@ -329,7 +329,7 @@ public void scoringDrive() {
     double elevatorHeading = 0;//Lift target
     int elevatorIndexValue = 0;//Setpoints array address value
   public void elevatorPID() {
-    
+    /*
     //Elevator PID Control
     
     //Go to absolute lift bottom
@@ -337,7 +337,7 @@ public void scoringDrive() {
       elevatorHeading = ElevatorConstants.SETPOINTS[0];
     }
 
-    //Go to rocket level 3
+    //Go to rocket level 3 (cargo)
     if(operatorController.getPOV() == 270) {
       elevatorHeading = ElevatorConstants.SETPOINTS[ElevatorConstants.SETPOINTS.length - 1];
     }
@@ -354,15 +354,15 @@ public void scoringDrive() {
     
     //Move elevator into the desired position
     elevatorWinch.set(ControlMode.Position,toClicks(elevatorHeading));
-    
-
+    */
+/*
     //For initial testing
     elevatorWinch.set(ControlMode.PercentOutput, operatorController.getRawAxis(1));//figure out motor direction
     elevatorWinch.getSensorCollection().getPulseWidthPosition();//figure out sensor direction
-
+*/
   }
 
-  public static int toClicks(double inches) {
+  public static int toClicks(double inches) { // Convert an inch height value to encoder clicks
     return (int) (inches / ElevatorConstants.DRUM_CIRCUMFERENCE * ElevatorConstants.CPR);
   }
 
@@ -414,9 +414,6 @@ public void scoringDrive() {
      elevatorWinch.setSelectedSensorPosition(absolutePosition, 0, ElevatorConstants.TIMEOUT);
   }
 
-  double intakeHeading = 0;//Intake target
-  int intakeIndexValue = 0;//Setpoints array address value
-
   public void intakeInit() {
      //set intakeGearbox to do nothing at the beginning
      intakeGearbox.set(ControlMode.PercentOutput,0);
@@ -465,6 +462,33 @@ public void scoringDrive() {
      //TODO: Force into starting position, then set baseline relative position? See the sample code:
      //https://github.com/CrossTheRoadElec/Phoenix-Examples-Languages/blob/master/Java/PositionClosedLoop/src/main/java/frc/robot/Robot.java
  }
+ 
+ double intakeHeading = 0;//Intake target
+ int intakeIndexValue = 0;//Setpoints array address value
+
+ public void intakePID() {
+   /*
+    //Intake PID Control
+    
+    //Intake rotates down one setpoint
+    if(operatorController.getRawButton(1) && intakeIndexValue >= 0) { // "A" button
+      intakeHeading = IntakeConstants.SETPOINTS[--intakeIndexValue];
+    }
+
+    //Intake rotates up one setpoint
+    if(operatorController.getRawButton(4) && intakeIndexValue <= (IntakeConstants.SETPOINTS.length - 1)) { // "Y" Button
+      intakeHeading = IntakeConstants.SETPOINTS[++intakeIndexValue];
+    }
+
+    //Move intake into the desired position
+    intakeGearbox.set(ControlMode.Position,toClicks(intakeHeading));
+    */
+/*
+    //For initial testing
+    intakeGearbox.set(ControlMode.PercentOutput, operatorController.getRawAxis(1) * -1);//figure out motor direction
+    intakeGearbox.getSensorCollection().getPulseWidthPosition();//figure out sensor direction
+  */
+  }
   
 
   /**
