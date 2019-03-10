@@ -53,6 +53,9 @@ public class Robot extends TimedRobot {
 
   // Elevator elevatorWinch
   TalonSRX elevatorWinch;
+  DigitalInput mainElevatorLow, mainElevatorHigh; // lift limit switches
+	boolean mainElevatorIsNotLow = mainElevatorLow.get(); // low limit switch on lift value
+	boolean mainElevatorIsNotHigh = mainElevatorHigh.get(); // high limit switch on lift value
 
   // Shooter
   WPI_TalonSRX shooter;
@@ -104,12 +107,13 @@ public class Robot extends TimedRobot {
 
     // Elevator winch
     elevatorWinch = new WPI_TalonSRX(5);
-    winchInit(); // Method to set up winch: set it in its own method for organization
+    mainElevatorLow = new DigitalInput(4); // TODO: Plan and check all of the new limit switch DIO ports
+		mainElevatorHigh = new DigitalInput(5);
 
     // Shooter
     shooter = new WPI_TalonSRX(6);
     shooterLimit = new DigitalInput(2); // Limit switch to prevent from ripping cargo
-    hasCargo = !shooterLimit.get(); // Boolean to use limit switch's input
+    hasCargo = !shooterLimit.get(); // Boolean to use flip limit switch's input and use it
 
     // Intake
     intakeGearbox = new WPI_TalonSRX(7);
@@ -179,16 +183,22 @@ public class Robot extends TimedRobot {
   }
 
   public void auxilaries(){ // Method containing all mechs except for elevator and intake
+    
+    double liftCommand = operatorController.getRawAxis(1); // Left stick: -1 is forward
+		if (mainElevatorIsNotLow && liftCommand < 0) { // go down if we're not already at the bottom
+			elevatorWinch.set(liftCommand);
+		} else if (mainElevatorIsNotHigh && liftCommand > 0) { // go up if we're not already at the top
+			elevatorWinch.set(liftCommand);
+		} else {
+			elevatorWinch.set(0);
+		}
 
     double shooterCommand = deadzoneComp(operatorController.getRawAxis(1)); // Left Stick on XBOX
 
-    // Shooter Control (left Xbox joystick)
-    if(shooterCommand > 0 && shooterLimit.get()) { // Shooter will intake as long as limit isn't pressed
-      // intake
-      shooter.set(shooterCommand);
-    } else {
-      shooter.set(shooterCommand);
-    }
+    double shooterCommand = operatorController.getRawAxis(3); // TODO: Make sure limit override is correct buttton and shooter is correct axis (left stick X axis)
+		if(hasCargo || operatorController.getRawButton(2)) { // if we don't have cargo, make cargo intakable (or by l.s. override)
+			shooter.set(shooterCommand);
+		}
   
     // HP Grab and Release (left and right bumpers)
     if(operatorController.getRawButton(5)) { // Left Bumper
@@ -213,7 +223,7 @@ public class Robot extends TimedRobot {
     }
 
     // HAB elevatorWinch- controlled by right stick
-    double HABelevatorWinchControl = deadzoneComp(operatorController.getRawAxis(5) * -1);
+    double HABelevatorWinchControl = deadzoneComp(operatorController.getRawAxis(5));
     if(operatorController.getRawButton(10)) { // Have to press down stick AND push it up or down to prevent accidental activation
       elevatorWinchHAB.set(HABelevatorWinchControl); // Moves HAB elevatorWinch up and down
     } else {
@@ -225,10 +235,14 @@ public class Robot extends TimedRobot {
     // HAB Drive
     wheelsHAB.set(HABdriveControl);
   }
+  
+  //Intake: Controlled by PID method
+  intakePID();
 
   // Intake wheels- controlled by Right Trigger
   // We won't ever need to outtake from the bar intake
   double intakeWheelsControl = deadzoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kRight));
+  intakeWheels.set(intakeWheelsControl);
 
   // Vision Aiming Code. I didn't program this, so I did my best to implement it. TODO: Debug as necessary
 public void visionLogic(){
@@ -316,18 +330,9 @@ public void scoringDrive() {
     }
   }
 
-  public boolean invertBoolean(boolean input) { // Returns true when input is false and vice versa
-    if(input) {
-      return false;
-    } else if(!input) {
-      return true;
-    } else {
-      return false;
-    }
-  }
-
-    double elevatorHeading = 0;//Lift target
-    int elevatorIndexValue = 0;//Setpoints array address value
+  /* 
+   // double elevatorHeading = 0;//Lift target
+    // int elevatorIndexValue = 0;//Setpoints array address value
   public void elevatorPID() {
     /*
     //Elevator PID Control
@@ -361,6 +366,7 @@ public void scoringDrive() {
     elevatorWinch.getSensorCollection().getPulseWidthPosition();//figure out sensor direction
 */
   }
+*/
 
   public static int toClicks(double inches) { // Convert an inch height value to encoder clicks
     return (int) (inches / ElevatorConstants.DRUM_CIRCUMFERENCE * ElevatorConstants.CPR);
@@ -469,23 +475,29 @@ public void scoringDrive() {
  public void intakePID() {
    /*
     //Intake PID Control
+    // TODO: get new intake angles and put them in "Intake Constants"
     
-    //Intake rotates down one setpoint
-    if(operatorController.getRawButton(1) && intakeIndexValue >= 0) { // "A" button
-      intakeHeading = IntakeConstants.SETPOINTS[--intakeIndexValue];
+    //Intake rotates to starting/highest position
+    if(operatorController.getRawButton(4)) { // "Y" Button: starting position
+      intakeHeading = IntakeConstants.SETPOINTS[0];
     }
-
-    //Intake rotates up one setpoint
-    if(operatorController.getRawButton(4) && intakeIndexValue <= (IntakeConstants.SETPOINTS.length - 1)) { // "Y" Button
-      intakeHeading = IntakeConstants.SETPOINTS[++intakeIndexValue];
+    
+    //Intake rotates to intaking/middle position
+    if(operatorController.getRawButton(2)) { // "B" Button: intaking position
+    intakeHeading = intakeConstants.SETPOINTS[1];
+    }
+    
+    //Intake rotates to scoring/stowed/folded all the way down position
+    if(operatorController.getRawButton(1)) { // "A" button: stowed position
+      intakeHeading = IntakeConstants.SETPOINTS[2];
     }
 
     //Move intake into the desired position
-    intakeGearbox.set(ControlMode.Position,toClicks(intakeHeading));
+    intakeGearbox.set(ControlMode.Position,toClicks(intakeHeading)); //TODO: make a toClicks method specifically for intake!
     */
 /*
     //For initial testing
-    intakeGearbox.set(ControlMode.PercentOutput, operatorController.getRawAxis(1) * -1);//figure out motor direction
+    intakeGearbox.set(ControlMode.PercentOutput, operatorController.getRawAxis(1));//figure out motor direction
     intakeGearbox.getSensorCollection().getPulseWidthPosition();//figure out sensor direction
   */
   }
