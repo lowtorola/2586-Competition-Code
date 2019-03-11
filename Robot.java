@@ -52,7 +52,7 @@ public class Robot extends TimedRobot {
   double leftPower, rightPower;
 
   // Elevator elevatorWinch
-  TalonSRX elevatorWinch;
+  WPI_TalonSRX elevatorWinch;
   DigitalInput mainElevatorLow, mainElevatorHigh; // lift limit switches
 	boolean mainElevatorIsNotLow = mainElevatorLow.get(); // low limit switch on lift value
 	boolean mainElevatorIsNotHigh = mainElevatorHigh.get(); // high limit switch on lift value
@@ -69,6 +69,7 @@ public class Robot extends TimedRobot {
   // HAB Lift
   Spark elevatorWinchHAB;
   PWMVictorSPX wheelsHAB;
+  DigitalInput HABLiftUp, HABLiftDown;
 
   // HP Mech
   DoubleSolenoid mechUpDown, hatchGrabRelease;
@@ -107,22 +108,23 @@ public class Robot extends TimedRobot {
 
     // Elevator winch
     elevatorWinch = new WPI_TalonSRX(5);
-    mainElevatorLow = new DigitalInput(4); // TODO: Plan and check all of the new limit switch DIO ports
-		mainElevatorHigh = new DigitalInput(5);
+    mainElevatorLow = new DigitalInput(3);
+		mainElevatorHigh = new DigitalInput(4);
 
     // Shooter
     shooter = new WPI_TalonSRX(6);
-    shooterLimit = new DigitalInput(2); // Limit switch to prevent from ripping cargo
+    shooterLimit = new DigitalInput(0); // Limit switch to prevent from ripping cargo
     hasCargo = !shooterLimit.get(); // Boolean to use flip limit switch's input and use it
 
     // Intake
     intakeGearbox = new WPI_TalonSRX(7);
-    intakeWheels = new PWMVictorSPX(0);
+    intakeWheels = new PWMVictorSPX(1);
     intakeInit(); // Method to set up intake gearbox: set it in its own method for organization
 
     // HAB Lift
     elevatorWinchHAB = new Spark(2); // Motor to drive HAB lift up and down
     wheelsHAB = new PWMVictorSPX(1); // Motor to drive us forward once we get on the HAB
+
 
     // HP Mech
     mechUpDown = new DoubleSolenoid(0, 1); // Solenoid to rotate the HP Mech up and down
@@ -141,7 +143,6 @@ public class Robot extends TimedRobot {
     } else {
       SmartDashboard.putString("Hatch Mech Position", "Down"); // Print out that the HP mech is up
     }
-    SmartDashboard.putString("Target Position", ElevatorConstants.SETPOINT_NAMES[elevatorIndexValue]); // Print out the name of our elevator target point
     SmartDashboard.putString("Target Position", IntakeConstants.SETPOINT_NAMES[intakeIndexValue]); // Print out the name of our intake target point
   }
 }
@@ -193,10 +194,8 @@ public class Robot extends TimedRobot {
 			elevatorWinch.set(0);
 		}
 
-    double shooterCommand = deadzoneComp(operatorController.getRawAxis(1)); // Left Stick on XBOX
-
-    double shooterCommand = operatorController.getRawAxis(3); // TODO: Make sure limit override is correct buttton and shooter is correct axis (left stick X axis)
-		if(hasCargo || operatorController.getRawButton(2)) { // if we don't have cargo, make cargo intakable (or by l.s. override)
+    double shooterCommand = operatorController.getRawAxis(0); // TODO: Make sure limit override is correct buttton and shooter is correct axis (left stick X axis)
+		if(hasCargo || operatorController.getRawButton(3)) { // if we don't have cargo, make cargo intakable (or by l.s. override)
 			shooter.set(shooterCommand);
 		}
   
@@ -237,13 +236,12 @@ public class Robot extends TimedRobot {
   }
   
   //Intake: Controlled by PID method
-  intakePID();
+  
 
   // Intake wheels- controlled by Right Trigger
   // We won't ever need to outtake from the bar intake
   double intakeWheelsControl = deadzoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kRight));
-  intakeWheels.set(intakeWheelsControl);
-
+  // TODO: WHY won't intake wheels setter work
   // Vision Aiming Code. I didn't program this, so I did my best to implement it. TODO: Debug as necessary
 public void visionLogic(){
 /*
@@ -330,95 +328,12 @@ public void scoringDrive() {
     }
   }
 
-  /* 
-   // double elevatorHeading = 0;//Lift target
-    // int elevatorIndexValue = 0;//Setpoints array address value
-  public void elevatorPID() {
-    /*
-    //Elevator PID Control
-    
-    //Go to absolute lift bottom
-    if(operatorController.getPOV() == 90) {
-      elevatorHeading = ElevatorConstants.SETPOINTS[0];
-    }
 
-    //Go to rocket level 3 (cargo)
-    if(operatorController.getPOV() == 270) {
-      elevatorHeading = ElevatorConstants.SETPOINTS[ElevatorConstants.SETPOINTS.length - 1];
-    }
-
-    //Lift moves up one setpoint
-    if(operatorController.getPOV() == 0 && elevatorIndexValue <= (ElevatorConstants.SETPOINTS.length - 1)) {
-      elevatorHeading = ElevatorConstants.SETPOINTS[++elevatorIndexValue];
-    }
-
-    //Lift moves down one setpoint
-    if(operatorController.getPOV() == 180 && elevatorIndexValue >= 0) {
-      elevatorHeading = ElevatorConstants.SETPOINTS[--elevatorIndexValue];
-    }
-    
-    //Move elevator into the desired position
-    elevatorWinch.set(ControlMode.Position,toClicks(elevatorHeading));
-    */
-/*
-    //For initial testing
-    elevatorWinch.set(ControlMode.PercentOutput, operatorController.getRawAxis(1));//figure out motor direction
-    elevatorWinch.getSensorCollection().getPulseWidthPosition();//figure out sensor direction
-*/
-  }
-*/
-
-  public static int toClicks(double inches) { // Convert an inch height value to encoder clicks
-    return (int) (inches / ElevatorConstants.DRUM_CIRCUMFERENCE * ElevatorConstants.CPR);
+  public static int degreesToClicks(double angle) {
+    return (int) (IntakeConstants.CPR / 360 * angle);// Convert angle in degrees into usable clicks value
   }
 
-  public void winchInit() { // Set up elevator winch PID
-     //set elevatorWinch to do nothing at the beginning
-     elevatorWinch.set(ControlMode.PercentOutput,0);
 
-     //whether to invert motor direction
-     elevatorWinch.setInverted(ElevatorConstants.MOTOR_INVERT);
-
-     //start in brake mode, for regenerative braking.
-     elevatorWinch.setNeutralMode(NeutralMode.Brake);    
-
-     //fastest time period where speed can be ramped from 0 to 1. In seconds.
-     //elevatorWinch.configClosedloopRamp(.1);     
-
-     //set the maximum speed for the controller (percent of max speed)
-     //elevatorWinch.configPeakOutputForward(.5);
-     //elevatorWinch.configPeakOutputReverse(.5);
-
-     //can set the controller to adjust power based on battery voltage automatically.
-     //elevatorWinch.enableVoltageCompensation();
-
-     //Sensor config
-     elevatorWinch.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, ElevatorConstants.TIMEOUT);
-     elevatorWinch.setSensorPhase(ElevatorConstants.SENSOR_INVERT);
-     
-     //nominal/peak values
-     elevatorWinch.configNominalOutputForward(0);
-     elevatorWinch.configNominalOutputReverse(0);
-     elevatorWinch.configPeakOutputForward(1);
-     elevatorWinch.configPeakOutputReverse(-1);
-
-     //Configure gain values
-     elevatorWinch.config_kF(ElevatorConstants.PID_SLOT, ElevatorConstants.kF);
-     elevatorWinch.config_kP(ElevatorConstants.PID_SLOT, ElevatorConstants.kP);
-     elevatorWinch.config_kI(ElevatorConstants.PID_SLOT, ElevatorConstants.kI);
-     elevatorWinch.config_kD(ElevatorConstants.PID_SLOT, ElevatorConstants.kD);
-
-
-     int absolutePosition = elevatorWinch.getSensorCollection().getPulseWidthPosition();
-
-     /* Mask out overflows, keep bottom 12 bits */
-     absolutePosition &= 0xFFF;
-     if (ElevatorConstants.SENSOR_INVERT) { absolutePosition *= -1; }
-     if (ElevatorConstants.MOTOR_INVERT) { absolutePosition *= -1; }
-     
-     /* Set the quadrature (relative) sensor to match absolute */
-     elevatorWinch.setSelectedSensorPosition(absolutePosition, 0, ElevatorConstants.TIMEOUT);
-  }
 
   public void intakeInit() {
      //set intakeGearbox to do nothing at the beginning
@@ -473,7 +388,7 @@ public void scoringDrive() {
  int intakeIndexValue = 0;//Setpoints array address value
 
  public void intakePID() {
-   /*
+   
     //Intake PID Control
     // TODO: get new intake angles and put them in "Intake Constants"
     
@@ -484,7 +399,7 @@ public void scoringDrive() {
     
     //Intake rotates to intaking/middle position
     if(operatorController.getRawButton(2)) { // "B" Button: intaking position
-    intakeHeading = intakeConstants.SETPOINTS[1];
+    intakeHeading = IntakeConstants.SETPOINTS[1];
     }
     
     //Intake rotates to scoring/stowed/folded all the way down position
@@ -493,8 +408,8 @@ public void scoringDrive() {
     }
 
     //Move intake into the desired position
-    intakeGearbox.set(ControlMode.Position,toClicks(intakeHeading)); //TODO: make a toClicks method specifically for intake!
-    */
+    intakeGearbox.set(ControlMode.Position,degreesToClicks(intakeHeading));
+    
 /*
     //For initial testing
     intakeGearbox.set(ControlMode.PercentOutput, operatorController.getRawAxis(1));//figure out motor direction
