@@ -12,12 +12,12 @@ import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import com.kauailabs.navx.frc.AHRS;
 import edu.wpi.cscore.UsbCamera;
 import edu.wpi.first.cameraserver.CameraServer;
+import edu.wpi.first.wpilibj.Compressor;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.PWMVictorSPX;
 import edu.wpi.first.wpilibj.SPI;
-import edu.wpi.first.wpilibj.Spark;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
@@ -26,7 +26,6 @@ import edu.wpi.first.wpilibj.GenericHID;
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.NeutralMode;
-import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 
 public class Robot extends TimedRobot {
 
@@ -54,8 +53,8 @@ public class Robot extends TimedRobot {
   // Elevator elevatorWinch
   WPI_TalonSRX elevatorWinch;
   DigitalInput mainElevatorLow, mainElevatorHigh; // lift limit switches
-	boolean mainElevatorIsNotLow = mainElevatorLow.get(); // low limit switch on lift value
-	boolean mainElevatorIsNotHigh = mainElevatorHigh.get(); // high limit switch on lift value
+	boolean mainElevatorIsNotLow;
+	boolean mainElevatorIsNotHigh;
 
   // Shooter
   WPI_TalonSRX shooter;
@@ -66,15 +65,11 @@ public class Robot extends TimedRobot {
   WPI_TalonSRX intakeGearbox;
   PWMVictorSPX intakeWheels;
 
-  // HAB Lift
-  Spark elevatorWinchHAB;
-  PWMVictorSPX wheelsHAB;
-  DigitalInput HABLiftUp, HABLiftDown;
-
   // HP Mech
   DoubleSolenoid mechUpDown, hatchGrabRelease;
   boolean hasHatch = false; // To tell the operator we have a hatch
   boolean hatchMechUp = true; // To print the hatch mech's position to SB
+  Compressor comp;
 
   @Override
   public void robotInit() {
@@ -103,13 +98,15 @@ public class Robot extends TimedRobot {
 
     // Camera
     camera = CameraServer.getInstance().startAutomaticCapture();
-   camera.setResolution(300, 225);
+   camera.setResolution(200, 150);
    camera.setFPS(30);
 
     // Elevator winch
     elevatorWinch = new WPI_TalonSRX(5);
     mainElevatorLow = new DigitalInput(3);
-		mainElevatorHigh = new DigitalInput(4);
+    mainElevatorHigh = new DigitalInput(4);
+    mainElevatorIsNotLow = mainElevatorLow.get(); // low limit switch on lift value
+    mainElevatorIsNotHigh = mainElevatorHigh.get(); // high limit switch on lift value
 
     // Shooter
     shooter = new WPI_TalonSRX(6);
@@ -118,17 +115,14 @@ public class Robot extends TimedRobot {
 
     // Intake
     intakeGearbox = new WPI_TalonSRX(7);
-    intakeWheels = new PWMVictorSPX(1);
+    intakeWheels = new PWMVictorSPX(0);
     intakeInit(); // Method to set up intake gearbox: set it in its own method for organization
-
-    // HAB Lift
-    elevatorWinchHAB = new Spark(2); // Motor to drive HAB lift up and down
-    wheelsHAB = new PWMVictorSPX(1); // Motor to drive us forward once we get on the HAB
-
 
     // HP Mech
     mechUpDown = new DoubleSolenoid(0, 1); // Solenoid to rotate the HP Mech up and down
     hatchGrabRelease = new DoubleSolenoid(2, 3); // Solenoid to grab and release HP
+    comp = new Compressor();
+    comp.start();
 
   }
   int counter = 0; // Integer to make it so that we print out to ShuffleBoard every 10 cycles
@@ -143,12 +137,29 @@ public class Robot extends TimedRobot {
     } else {
       SmartDashboard.putString("Hatch Mech Position", "Down"); // Print out that the HP mech is up
     }
-    SmartDashboard.putString("Target Position", IntakeConstants.SETPOINT_NAMES[intakeIndexValue]); // Print out the name of our intake target point
+    SmartDashboard.putString("Intake Position", IntakeConstants.SETPOINT_NAMES[intakeIndexValue]); // Print out the name of our intake target point
+    if(!mainElevatorIsNotHigh) {
+      SmartDashboard.putString("Lift Position", "Top");
+    } else if(!mainElevatorIsNotLow) {
+      SmartDashboard.putString("Lift Position", "Bottom");
+    } else {
+      SmartDashboard.putString("Lift Position", "Floating");
+    }
+    SmartDashboard.putNumber("lY", leftJoyStick.getY());
+    SmartDashboard.putNumber("rY", rightJoyStick.getY());
+    SmartDashboard.putNumber("Lift Direction", operatorController.getRawAxis(1));
+
+    if(rightJoyStick.getRawButton(11)) { // Vision drive
+      SmartDashboard.putString("Drive Mode", "Vision Mode"); 
+    } else if(leftJoyStick.getRawButton(6)) { // Creep drive
+      SmartDashboard.putString("Drive Mode", "Scoring Drive");
+    } else { // Normal tank drive
+     SmartDashboard.putString("Drive Mode", "Tank Drive");
+    }
+    SmartDashboard.putNumber("Intake Encoder", intakeGearbox.getSelectedSensorPosition());
   }
 }
   
-
-
   @Override
   public void autonomousInit() {
     
@@ -220,28 +231,15 @@ public class Robot extends TimedRobot {
       mechUpDown.set(DoubleSolenoid.Value.kReverse);
       hatchMechUp = false;
     }
-
-    // HAB elevatorWinch- controlled by right stick
-    double HABelevatorWinchControl = deadzoneComp(operatorController.getRawAxis(5));
-    if(operatorController.getRawButton(10)) { // Have to press down stick AND push it up or down to prevent accidental activation
-      elevatorWinchHAB.set(HABelevatorWinchControl); // Moves HAB elevatorWinch up and down
-    } else {
-      elevatorWinchHAB.set(0);
-    }
-
-    double HABdriveControl = deadzoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kLeft)); 
-    // Left trigger controls this
-    // HAB Drive
-    wheelsHAB.set(HABdriveControl);
-  }
   
   //Intake: Controlled by PID method
   
 
   // Intake wheels- controlled by Right Trigger
   // We won't ever need to outtake from the bar intake
-  double intakeWheelsControl = deadzoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kRight));
-  // TODO: WHY won't intake wheels setter work
+  double intakeWheelsControl = deadzoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kRight) * -1);
+  intakeWheels.set(intakeWheelsControl);
+  }
   // Vision Aiming Code. I didn't program this, so I did my best to implement it. TODO: Debug as necessary
 public void visionLogic(){
 /*
