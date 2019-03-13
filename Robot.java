@@ -105,8 +105,6 @@ public class Robot extends TimedRobot {
     elevatorWinch = new WPI_TalonSRX(5);
     mainElevatorLow = new DigitalInput(7);
     mainElevatorHigh = new DigitalInput(8);
-    mainElevatorIsNotLow = mainElevatorLow.get(); // low limit switch on lift value
-    mainElevatorIsNotHigh = mainElevatorHigh.get(); // high limit switch on lift value
 
     // Shooter
     shooter = new WPI_TalonSRX(6);
@@ -146,7 +144,6 @@ public class Robot extends TimedRobot {
     } else {
       SmartDashboard.putString("Lift Position", "Floating");
     }
-    SmartDashboard.putBoolean("Elevator Test", mainElevatorIsNotLow);
     SmartDashboard.putNumber("lY", leftPower);
     SmartDashboard.putNumber("rY", rightPower);
     SmartDashboard.putNumber("Lift Direction", deadZoneComp(operatorController.getRawAxis(1) * -1));
@@ -181,6 +178,10 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void teleopPeriodic() {
+
+    mainElevatorIsNotLow = mainElevatorLow.get(); // low limit switch on lift value
+    mainElevatorIsNotHigh = mainElevatorHigh.get(); // high limit switch on lift value
+
     auxilaries(); // Method for controlling mechs
     leftPower = deadZoneComp(leftJoyStick.getY()) * -1;
     rightPower = deadZoneComp(rightJoyStick.getY()) * -1; 
