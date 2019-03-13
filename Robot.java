@@ -103,24 +103,25 @@ public class Robot extends TimedRobot {
 
     // Elevator winch
     elevatorWinch = new WPI_TalonSRX(5);
-    mainElevatorLow = new DigitalInput(3);
-    mainElevatorHigh = new DigitalInput(4);
+    mainElevatorLow = new DigitalInput(7);
+    mainElevatorHigh = new DigitalInput(8);
     mainElevatorIsNotLow = mainElevatorLow.get(); // low limit switch on lift value
     mainElevatorIsNotHigh = mainElevatorHigh.get(); // high limit switch on lift value
 
     // Shooter
     shooter = new WPI_TalonSRX(6);
-    shooterLimit = new DigitalInput(0); // Limit switch to prevent from ripping cargo
+    shooterLimit = new DigitalInput(6); // Limit switch to prevent from ripping cargo
     hasCargo = !shooterLimit.get(); // Boolean to use flip limit switch's input and use it
 
     // Intake
     intakeGearbox = new WPI_TalonSRX(7);
     intakeWheels = new PWMVictorSPX(0);
-    intakeInit(); // Method to set up intake gearbox: set it in its own method for organization
+   // intakeInit(); // Method to set up intake gearbox: set it in its own method for organization
 
     // HP Mech
-    mechUpDown = new DoubleSolenoid(0, 1); // Solenoid to rotate the HP Mech up and down
-    hatchGrabRelease = new DoubleSolenoid(2, 3); // Solenoid to grab and release HP
+    mechUpDown = new DoubleSolenoid(2, 3); // Solenoid to rotate the HP Mech up and down
+    hatchGrabRelease = new DoubleSolenoid(0, 1); // Solenoid to grab and release HP
+    hatchGrabRelease.set(DoubleSolenoid.Value.kReverse);
     comp = new Compressor();
     comp.start();
 
@@ -133,11 +134,11 @@ public class Robot extends TimedRobot {
     SmartDashboard.putBoolean("Has Hatch Panel", hasHatch); // Print out that we have a HP
     SmartDashboard.putBoolean("Has Cargo", hasCargo); // Print out that we have a Cargo
     if(hatchMechUp) {
-      SmartDashboard.putString("Hatch Mech Position", "Up"); // Print out that the HP mech is up
+      SmartDashboard.putString("HP Mech Position", "Up"); // Print out that the HP mech is up
     } else {
-      SmartDashboard.putString("Hatch Mech Position", "Down"); // Print out that the HP mech is up
+      SmartDashboard.putString("HP Mech Position", "Down"); // Print out that the HP mech is up
     }
-    SmartDashboard.putString("Intake Position", IntakeConstants.SETPOINT_NAMES[intakeIndexValue]); // Print out the name of our intake target point
+  //  SmartDashboard.putString("Intake Position", IntakeConstants.SETPOINT_NAMES[intakeIndexValue]); // Print out the name of our intake target point
     if(!mainElevatorIsNotHigh) {
       SmartDashboard.putString("Lift Position", "Top");
     } else if(!mainElevatorIsNotLow) {
@@ -145,9 +146,12 @@ public class Robot extends TimedRobot {
     } else {
       SmartDashboard.putString("Lift Position", "Floating");
     }
-    SmartDashboard.putNumber("lY", leftJoyStick.getY());
-    SmartDashboard.putNumber("rY", rightJoyStick.getY());
-    SmartDashboard.putNumber("Lift Direction", operatorController.getRawAxis(1));
+    SmartDashboard.putBoolean("Elevator Test", mainElevatorIsNotLow);
+    SmartDashboard.putNumber("lY", leftPower);
+    SmartDashboard.putNumber("rY", rightPower);
+    SmartDashboard.putNumber("Lift Direction", deadZoneComp(operatorController.getRawAxis(1) * -1));
+    SmartDashboard.putNumber("Intake Encoder Clicks", intakeGearbox.getSelectedSensorPosition());
+    SmartDashboard.putNumber("Intake Encoder Degrees", clicksToDegrees(intakeGearbox.getSelectedSensorPosition()));
 
     if(rightJoyStick.getRawButton(11)) { // Vision drive
       SmartDashboard.putString("Drive Mode", "Vision Mode"); 
@@ -156,7 +160,6 @@ public class Robot extends TimedRobot {
     } else { // Normal tank drive
      SmartDashboard.putString("Drive Mode", "Tank Drive");
     }
-    SmartDashboard.putNumber("Intake Encoder", intakeGearbox.getSelectedSensorPosition());
   }
 }
   
@@ -179,8 +182,8 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopPeriodic() {
     auxilaries(); // Method for controlling mechs
-    leftPower = deadzoneComp(leftJoyStick.getY()) * -1;
-    rightPower = deadzoneComp(rightJoyStick.getY()) * -1; 
+    leftPower = deadZoneComp(leftJoyStick.getY()) * -1;
+    rightPower = deadZoneComp(rightJoyStick.getY()) * -1; 
 
     if(rightJoyStick.getRawButton(11)) { // Vision drive
       visionLogic(); // Vision processing
@@ -233,11 +236,11 @@ public class Robot extends TimedRobot {
     }
   
   //Intake: Controlled by PID method
-  
+  intakeGearbox.set(operatorController.getRawAxis(4) * 0.25);
 
   // Intake wheels- controlled by Right Trigger
   // We won't ever need to outtake from the bar intake
-  double intakeWheelsControl = deadzoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kRight) * -1);
+  double intakeWheelsControl = deadZoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kRight) * -1);
   intakeWheels.set(intakeWheelsControl);
   }
   // Vision Aiming Code. I didn't program this, so I did my best to implement it. TODO: Debug as necessary
@@ -318,7 +321,7 @@ public void scoringDrive() {
   }
   
   // Just a simple dead zone
-  public double deadzoneComp(double x){
+  public double deadZoneComp(double x){
     if(Math.abs(x) < 0.08){
       return 0;
     }else{
@@ -326,6 +329,10 @@ public void scoringDrive() {
     }
   }
 
+
+  public static double clicksToDegrees(double clicks) {
+    return (int) (clicks / IntakeConstants.clicksPerDegree);
+  }
 
   public static int degreesToClicks(double angle) {
     return (int) (IntakeConstants.CPR / 360 * angle);// Convert angle in degrees into usable clicks value
@@ -381,7 +388,7 @@ public void scoringDrive() {
      //TODO: Force into starting position, then set baseline relative position? See the sample code:
      //https://github.com/CrossTheRoadElec/Phoenix-Examples-Languages/blob/master/Java/PositionClosedLoop/src/main/java/frc/robot/Robot.java
  }
- 
+ /*
  double intakeHeading = 0;//Intake target
  int intakeIndexValue = 0;//Setpoints array address value
 
@@ -408,13 +415,13 @@ public void scoringDrive() {
     //Move intake into the desired position
     intakeGearbox.set(ControlMode.Position,degreesToClicks(intakeHeading));
     
-/*
+
     //For initial testing
-    intakeGearbox.set(ControlMode.PercentOutput, operatorController.getRawAxis(1));//figure out motor direction
-    intakeGearbox.getSensorCollection().getPulseWidthPosition();//figure out sensor direction
-  */
-  }
+    //intakeGearbox.set(ControlMode.PercentOutput, operatorController.getRawAxis(1));//figure out motor direction
+    //intakeGearbox.getSensorCollection().getPulseWidthPosition();//figure out sensor direction
   
+  }
+  */
 
   /**
    * This function is called periodically during test mode.
