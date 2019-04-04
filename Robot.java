@@ -18,6 +18,8 @@ import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.PWMVictorSPX;
 import edu.wpi.first.wpilibj.SPI;
+import edu.wpi.first.wpilibj.Spark;
+import edu.wpi.first.wpilibj.SpeedControllerGroup;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
@@ -49,34 +51,47 @@ public class Robot extends TimedRobot {
   WPI_TalonSRX frontLeft, rearLeft, frontRight, rearRight;
   DifferentialDrive mainDrive;
   double leftPower, rightPower;
+  double d_power, d_rotation;
 
   // Elevator elevatorWinch
   WPI_TalonSRX elevatorWinch;
-  DigitalInput mainElevatorLow, mainElevatorHigh; // lift limit switches
-	boolean mainElevatorIsNotLow;
-	boolean mainElevatorIsNotHigh;
+  DigitalInput mainElevatorLow; // lift limit switches
+	boolean liftBottomLimit;
 
-  // Shooter
-  WPI_TalonSRX shooter;
-  DigitalInput shooterLimit;
-  boolean hasCargo; // To tell the operator we have a ball: based on the limit switch
-
+  /*
   // Intake
-  WPI_TalonSRX intakeGearbox;
-  PWMVictorSPX intakeWheels;
+  WPI_TalonSRX intakeGB;
+  WPI_TalonSRX intakeWheels;
+  double intakeGBControl;
+  double intakeGBClicks;
+  double intakeGBDegrees;
+ */
+  
+  // Arm
+  WPI_TalonSRX armGB;
+  PWMVictorSPX shooterWheels;
+  double armGBControl;
+  double armGBClicks;
+  double armGBDegrees;
+  double shooterControlIn;
+  double shooterControlOut;
 
+  /*
   // HP Mech
-  DoubleSolenoid mechUpDown, hatchGrabRelease;
-  boolean hasHatch = false; // To tell the operator we have a hatch
-  boolean hatchMechUp = true; // To print the hatch mech's position to SB
   Compressor comp;
+  DoubleSolenoid mechUpDown, hatchGrabRelease;
+ */
+  // HAB Lift
+  Spark HABDrive;
+  DigitalInput HABLiftLow;
+  DigitalInput HABLiftHigh;
 
   @Override
   public void robotInit() {
 
     // Vision Aiming
     tapeThread = new TapeThread();
-    tapeThread.start();
+  //  tapeThread.start();
     ahrs = new AHRS(SPI.Port.kMXP);
 
     // Controllers
@@ -91,74 +106,55 @@ public class Robot extends TimedRobot {
     rearLeft = new WPI_TalonSRX(2);
     frontRight = new WPI_TalonSRX(4);
     rearRight = new WPI_TalonSRX(3);
-    rearLeft.set(ControlMode.Follower, frontLeft.getBaseID());
-    rearRight.set(ControlMode.Follower, frontRight.getBaseID());
+    SpeedControllerGroup left = new SpeedControllerGroup(frontLeft, rearLeft);
+    SpeedControllerGroup right = new SpeedControllerGroup(frontRight, rearRight);
 
-    mainDrive = new DifferentialDrive(frontLeft, frontRight);
 
-    // Camera
+    mainDrive = new DifferentialDrive(left, right);
+
+    // Camera      
     camera = CameraServer.getInstance().startAutomaticCapture();
    camera.setResolution(200, 150);
-   camera.setFPS(30);
+   camera.setFPS(15);
 
     // Elevator winch
     elevatorWinch = new WPI_TalonSRX(5);
     mainElevatorLow = new DigitalInput(7);
-    mainElevatorHigh = new DigitalInput(8);
 
-    // Shooter
-    shooter = new WPI_TalonSRX(6);
-    shooterLimit = new DigitalInput(6); // Limit switch to prevent from ripping cargo
-    hasCargo = !shooterLimit.get(); // Boolean to use flip limit switch's input and use it
+    // Arm
+    armGB = new WPI_TalonSRX(7);
+    shooterWheels = new PWMVictorSPX(0);
+    armGB.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, IntakeConstants.TIMEOUT);
+    armGB.setSelectedSensorPosition(0, 0, IntakeConstants.TIMEOUT);
+    
 
+    // HAB Lift
+    HABDrive = new Spark(2);
+    HABLiftLow = new DigitalInput(8);
+    HABLiftHigh = new DigitalInput(9);
+/*
     // Intake
-    intakeGearbox = new WPI_TalonSRX(7);
-    intakeWheels = new PWMVictorSPX(0);
-   // intakeInit(); // Method to set up intake gearbox: set it in its own method for organization
-
-    // HP Mech
-    mechUpDown = new DoubleSolenoid(2, 3); // Solenoid to rotate the HP Mech up and down
-    hatchGrabRelease = new DoubleSolenoid(0, 1); // Solenoid to grab and release HP
-    hatchGrabRelease.set(DoubleSolenoid.Value.kReverse);
-    comp = new Compressor();
-    comp.start();
-
+    intakeGB = new WPI_TalonSRX(7);
+    intakeWheels = new WPI_TalonSRX(6);
+    intakeGB.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0, IntakeConstants.TIMEOUT);
+    intakeGB.setSelectedSensorPosition(0, 0, IntakeConstants.TIMEOUT);
+*/
   }
   int counter = 0; // Integer to make it so that we print out to ShuffleBoard every 10 cycles
   @Override
   public void robotPeriodic() {
     counter = (counter + 1) % 10; // Increase counter by 1, get the remainder to use later
     if(counter == 0) {
-    SmartDashboard.putBoolean("Has Hatch Panel", hasHatch); // Print out that we have a HP
-    SmartDashboard.putBoolean("Has Cargo", hasCargo); // Print out that we have a Cargo
-    if(hatchMechUp) {
-      SmartDashboard.putString("HP Mech Position", "Up"); // Print out that the HP mech is up
-    } else {
-      SmartDashboard.putString("HP Mech Position", "Down"); // Print out that the HP mech is up
-    }
-  //  SmartDashboard.putString("Intake Position", IntakeConstants.SETPOINT_NAMES[intakeIndexValue]); // Print out the name of our intake target point
-    if(!mainElevatorIsNotHigh) {
-      SmartDashboard.putString("Lift Position", "Top");
-    } else if(!mainElevatorIsNotLow) {
-      SmartDashboard.putString("Lift Position", "Bottom");
-    } else {
-      SmartDashboard.putString("Lift Position", "Floating");
-    }
-    SmartDashboard.putNumber("lY", leftPower);
-    SmartDashboard.putNumber("rY", rightPower);
-    SmartDashboard.putNumber("Lift Direction", deadZoneComp(operatorController.getRawAxis(1) * -1));
-    SmartDashboard.putNumber("Intake Encoder Clicks", intakeGearbox.getSelectedSensorPosition());
-    SmartDashboard.putNumber("Intake Encoder Degrees", clicksToDegrees(intakeGearbox.getSelectedSensorPosition()));
 
-    if(rightJoyStick.getRawButton(11)) { // Vision drive
-      SmartDashboard.putString("Drive Mode", "Vision Mode"); 
-    } else if(leftJoyStick.getRawButton(6)) { // Creep drive
-      SmartDashboard.putString("Drive Mode", "Scoring Drive");
-    } else { // Normal tank drive
-     SmartDashboard.putString("Drive Mode", "Tank Drive");
+      SmartDashboard.putNumber("Forward/Back", leftPower);
+      SmartDashboard.putNumber("Rotation", d_rotation);
+      SmartDashboard.putBoolean("Elevator at Bottom", !liftBottomLimit);
+      SmartDashboard.putNumber("Arm Gearbox Clicks", armGBClicks);
+
+
     }
   }
-}
+
   
   @Override
   public void autonomousInit() {
@@ -179,71 +175,117 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopPeriodic() {
 
-    mainElevatorIsNotLow = mainElevatorLow.get(); // low limit switch on lift value
-    mainElevatorIsNotHigh = mainElevatorHigh.get(); // high limit switch on lift value
+    liftBottomLimit = mainElevatorLow.get(); // low limit switch on lift value
 
     auxilaries(); // Method for controlling mechs
-    leftPower = deadZoneComp(leftJoyStick.getY()) * -1;
-    rightPower = deadZoneComp(rightJoyStick.getY()) * -1; 
+    d_power = squareInput(deadZoneComp(leftJoyStick.getY()) * -1); // TODO: check this
+    d_rotation = squareInput(deadZoneComp(rightJoyStick.getX()));
 
-    if(rightJoyStick.getRawButton(11)) { // Vision drive
-      visionLogic(); // Vision processing
-      SmartDashboard.putString("Auton Drive", "Robot is in Control"); 
-    } else if(leftJoyStick.getRawButton(6)) { // Creep drive
-      scoringDrive();
-      SmartDashboard.putString("Scoring Drive", "Manual Scoring");
-    } else { // Normal tank drive
-      mainDrive.tankDrive(leftPower, rightPower);
-     SmartDashboard.putString("Open Field Drive", "Regular");
-    }
+    mainDrive.arcadeDrive(d_power, d_rotation);
+
   }
 
   public void auxilaries(){ // Method containing all mechs except for elevator and intake
-    
-    double liftCommand = operatorController.getRawAxis(1); // Left stick: -1 is forward
-		if (mainElevatorIsNotLow && liftCommand < 0) { // go down if we're not already at the bottom
-			elevatorWinch.set(liftCommand);
-		} else if (mainElevatorIsNotHigh && liftCommand > 0) { // go up if we're not already at the top
-			elevatorWinch.set(liftCommand);
-		} else {
-			elevatorWinch.set(0);
-		}
 
-    double shooterCommand = operatorController.getRawAxis(0); // TODO: Make sure limit override is correct buttton and shooter is correct axis (left stick X axis)
-		if(hasCargo || operatorController.getRawButton(3)) { // if we don't have cargo, make cargo intakable (or by l.s. override)
-			shooter.set(shooterCommand);
-		}
-  
-    // HP Grab and Release (left and right bumpers)
-    if(operatorController.getRawButton(5)) { // Left Bumper
-      // drop it like it's hot...
-      hatchGrabRelease.set(DoubleSolenoid.Value.kReverse);
-      hasHatch = false;
-    } else if(operatorController.getRawButton(6)) { // Right bumper
-      // grab
-      hatchGrabRelease.set(DoubleSolenoid.Value.kForward);
-      hasHatch = true;
-    }
-     
-    // HP Mech Up and Down
-    if(operatorController.getRawButton(7)) { // Back button
-      // Up
-      mechUpDown.set(DoubleSolenoid.Value.kForward);
-      hatchMechUp = true;
-    } else if(operatorController.getRawButton(8)) { // Start button
-      // Down
-      mechUpDown.set(DoubleSolenoid.Value.kReverse);
-      hatchMechUp = false;
-    }
-  
-  //Intake: Controlled by PID method
-  intakeGearbox.set(operatorController.getRawAxis(4) * 0.25);
+    // Elevator will stop when it hits the bottom limit 
 
-  // Intake wheels- controlled by Right Trigger
-  // We won't ever need to outtake from the bar intake
-  double intakeWheelsControl = deadZoneComp(operatorController.getTriggerAxis(GenericHID.Hand.kRight) * -1);
-  intakeWheels.set(intakeWheelsControl);
+    double liftCommand = deadZoneComp(operatorController.getRawAxis(1) * -1); // Left stick Y
+    if (liftCommand > 0) {
+      elevatorWinch.set(liftCommand);
+    } else if (liftBottomLimit && liftCommand < 0) {
+      elevatorWinch.set(liftCommand);
+    } else {
+      elevatorWinch.set(0);
+    }
+/*
+    // Intake
+    intakeGBControl = deadZoneComp(operatorController.getRawAxis(5) * -1);
+    intakeGBClicks = intakeGB.getSelectedSensorPosition();
+    intakeGBDegrees = clicksToDegrees(intakeGBClicks);
+
+    int upperLimit = 0;
+    int lowerLimit = 159;
+    // not sure if it's this
+   if (intakeGBDegrees > upperLimit && intakeGBControl > 0) {
+     intakeGB.set(0.25 * (intakeGBControl) * -1);
+   } else if (intakeGBDegrees < lowerLimit && intakeGBControl < 0) {
+    intakeGB.set(0.25 * (intakeGBControl) * -1);
+   } else {
+    intakeGB.set(0);
+   } 
+   // or this
+/*   if (intakeGBDegrees <= upperLimit && intakeGBControl < 0) {
+    intakeGB.set(0);
+  } else if (intakeGBDegrees >= lowerLimit && intakeGBControl > 0){
+    intakeGB.set(0);
+  } else {
+    intakeGB.set(0.75 * (intakeGBControl));
+  } */
+
+     // Arm
+     armGBControl = deadZoneComp(operatorController.getRawAxis(5) * -1); // Right stick Y
+     armGBClicks = armGB.getSelectedSensorPosition();
+     armGBDegrees = clicksToDegrees(armGBClicks);
+ 
+     int upperLimit = 0;
+     int lowerLimit = 159;
+     // not sure if it's this
+    if (armGBDegrees > upperLimit && armGBControl > 0) {
+      armGB.set(0.25 * (armGBControl) * -1);
+    } else if (armGBDegrees < lowerLimit && armGBControl < 0) {
+     armGB.set(0.25 * (armGBControl) * -1);
+    } else {
+     armGB.set(0);
+    } 
+    // or this
+ /*   if (armGBDegrees <= upperLimit && armGBControl < 0) {
+     armGB.set(0);
+   } else if (armGBDegrees >= lowerLimit && armGBControl > 0){
+     armGB.set(0);
+   } else {
+     armGB.set(0.75 * (armGBControl));
+   } */
+
+
+   // Shooter Wheels
+   shooterControlIn = deadZoneComp(operatorController.getRawAxis(2)); // Left trigger
+   shooterControlOut = deadZoneComp(operatorController.getRawAxis(3) * -1); // Right trigger
+
+   if (Math.abs(shooterControlIn) > Math.abs(shooterControlOut)) {
+     shooterWheels.set(shooterControlIn);
+   } else if (Math.abs(shooterControlOut) > Math.abs(shooterControlOut)) {
+     shooterWheels.set(shooterControlOut);
+   } else {
+     shooterWheels.set(shooterControlOut);
+   }
+
+
+
+/*
+  // Hatch Mech
+  if(operatorController.getRawButton(8)) {
+    mechUpDown.set(DoubleSolenoid.Value.kForward); // Start button
+  } else if (operatorController.getRawButton(7)) {
+    mechUpDown.set(DoubleSolenoid.Value.kReverse); // Back button
   }
+
+  if(operatorController.getRawButton(6)) {
+    hatchGrabRelease.set(DoubleSolenoid.Value.kForward); // right bumper
+  }
+*/
+  // HAB Lift
+  boolean HABLiftTop = HABLiftHigh.get(); // The "high limit switch" is to stop it from going too low. Sounds wrong but should be right
+  boolean HABLiftBottom = HABLiftLow.get();
+  double HABWinchDrive = deadZoneComp(operatorController.getRawAxis(4)); // Right stick X
+
+  if (operatorController.getRawButton(6) && HABWinchDrive > 0 && HABLiftBottom) { // to drive the lift down
+    HABDrive.set(HABWinchDrive);
+  } else if (operatorController.getRawButton(6) && HABWinchDrive < 0 && HABLiftTop) { // to drive the lift up
+    HABDrive.set(HABWinchDrive);
+  }
+
+}
+
   // Vision Aiming Code. I didn't program this, so I did my best to implement it. TODO: Debug as necessary
 public void visionLogic(){
 /*
@@ -253,6 +295,7 @@ public void visionLogic(){
   3. Once aligned, move forward at adjusted speed based on right joystick 
 
   54* across 800 pixels = .0675 degrees/pixel
+
 
 */
   if(tapeThread.x != previousX){
@@ -264,7 +307,7 @@ public void visionLogic(){
     }else if(hasFrame){
       mainDrive.arcadeDrive(0, pidTurn(visionDegrees));
     }else if(Math.abs(tapeThread.x) < 40){
-      mainDrive.arcadeDrive(rightPower, 0.0);
+     // mainDrive.arcadeDrive(rightPower, 0.0);
     }
 
 }
@@ -308,7 +351,7 @@ public void compareValsWithin(double zone){
 // Smooth "Scoring Drive" for alignment
 public void scoringDrive() {
   double d_power = scoringDriveCalc(leftJoyStick.getY() * -1);
-  double d_rotation = scoringDriveCalc(rightJoyStick.getX() * -1);
+  double d_rotation = scoringDriveCalc(rightJoyStick.getX());
   mainDrive.arcadeDrive(d_power, d_rotation);
 }
 
@@ -318,6 +361,28 @@ public void scoringDrive() {
       return 0;
     }else{
       return input * 0.85;
+    }
+  }
+
+  // Squares input: for ease-of-driving
+  public double squareInput(double input) {
+    if(input < 0) {
+      return (-1 * (Math.pow(input, 2)));
+    } else if (input > 0) {
+      return (Math.pow(input, 2));
+    } else {
+      return 0;
+    }
+  }
+
+  // Caps input at 0.9 or -0.9: for shooter wheels
+  public double capInput(double input) {
+    if (input > 0.9) {
+      return 0.9;
+    } else if (input < -0.9) {
+      return -0.9;
+    } else {
+      return input;
     }
   }
   
@@ -330,7 +395,6 @@ public void scoringDrive() {
     }
   }
 
-
   public static double clicksToDegrees(double clicks) {
     return (int) (clicks / IntakeConstants.clicksPerDegree);
   }
@@ -340,7 +404,7 @@ public void scoringDrive() {
   }
 
 
-
+/*
   public void intakeInit() {
      //set intakeGearbox to do nothing at the beginning
      intakeGearbox.set(ControlMode.PercentOutput,0);
@@ -376,21 +440,21 @@ public void scoringDrive() {
      intakeGearbox.config_kD(IntakeConstants.PID_SLOT, IntakeConstants.kD);
 
 
-     int absolutePosition = intakeGearbox.getSensorCollection().getPulseWidthPosition();
+   //  int absolutePosition = intakeGearbox.getSensorCollection().getPulseWidthPosition();
 
      /* Mask out overflows, keep bottom 12 bits */
-     absolutePosition &= 0xFFF;
+     /*absolutePosition &= 0xFFF;
      if (IntakeConstants.SENSOR_INVERT) { absolutePosition *= -1; }
      if (IntakeConstants.MOTOR_INVERT) { absolutePosition *= -1; }
-     
+     */
      /* Set the quadrature (relative) sensor to match absolute */
-     intakeGearbox.setSelectedSensorPosition(absolutePosition, 0, IntakeConstants.TIMEOUT);
+    // intakeGearbox.setSelectedSensorPosition(0, 0, IntakeConstants.TIMEOUT);
      
      //TODO: Force into starting position, then set baseline relative position? See the sample code:
      //https://github.com/CrossTheRoadElec/Phoenix-Examples-Languages/blob/master/Java/PositionClosedLoop/src/main/java/frc/robot/Robot.java
- }
- /*
- double intakeHeading = 0;//Intake target
+//}
+ 
+/* double intakeHeading = 0;//Intake target
  int intakeIndexValue = 0;//Setpoints array address value
 
  public void intakePID() {
@@ -416,13 +480,8 @@ public void scoringDrive() {
     //Move intake into the desired position
     intakeGearbox.set(ControlMode.Position,degreesToClicks(intakeHeading));
     
-
-    //For initial testing
-    //intakeGearbox.set(ControlMode.PercentOutput, operatorController.getRawAxis(1));//figure out motor direction
-    //intakeGearbox.getSensorCollection().getPulseWidthPosition();//figure out sensor direction
+  } */
   
-  }
-  */
 
   /**
    * This function is called periodically during test mode.
